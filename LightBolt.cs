@@ -8,16 +8,27 @@ public class LightBolt : MonoBehaviour
     // -----------------------------
     private LineRenderer line;
     private Transform myTransform;
-    private Vector3 finalPos;
+    private Transform finalPos;
 
     public Transform Target;
     public float NumberOfBends = 4;
+
+    public Vector2 RandomStartMin;
+    public Vector2 RandomStartMax;
 
     public Vector2 RandomMiddleMin;
     public Vector2 RandomMiddleMax;
 
     public Vector2 RandomEndMin;
     public Vector2 RandomEndMax;
+
+    public Light DirectionalLight;
+
+    public string LayerName = "Default";
+
+    public bool SpawnBoltStrikesRandomly = false;
+    public float MinInterval = 0.2f;
+    public float MaxInterval = 5f;
     // -----------------------------
 
     // camera shake stuff -  https://gist.github.com/ftvs/5822103
@@ -42,57 +53,69 @@ public class LightBolt : MonoBehaviour
     // Use this for initialization
     void Start()
     {
+        // camera setup
+        if (camTransform == null)
+            camTransform = Camera.main.transform;
+
+        if (DirectionalLight != null)
+            DirectionalLight.enabled = false;
+
         // line renderer setup
         line = GetComponent<LineRenderer>();
         line.SetVertexCount((int)NumberOfBends);
 
         myTransform = gameObject.transform;
 
-        finalPos = Target.transform.localPosition;
-
-        // camera setup
-        if (camTransform == null)
-            camTransform = Camera.main.transform;
+        finalPos = Target.transform;
 
         originalPos = camTransform.localPosition;
 
+        if (SpawnBoltStrikesRandomly)
+            StartCoroutine(StartRandomBolts(MinInterval, MaxInterval));
+
+        line.renderer.sortingLayerName = LayerName;
+
+    }
+
+    IEnumerator StartRandomBolts(float min, float max)
+    {
+        var timer = Random.Range(min, max);
+
+        while (true)
+        {
+            timer -= Time.deltaTime;
+
+            if (timer <= 0)
+            {
+                timer = Random.Range(min, max);
+                StartCoroutine(SpawnSingleLightBolt(Random.Range(0.1f, 0.4f)));
+            }
+
+            yield return null;
+        }
     }
 
     IEnumerator SpawnSingleLightBolt(float duration)
     {
-        line.enabled = true;
-
-        line.SetPosition(0, myTransform.position);
-
-        for (var i = 1; i < (int)NumberOfBends; i++)
-        {
-            var pos = Vector3.Lerp(myTransform.localPosition, Target.transform.localPosition, i / NumberOfBends);
-
-            pos.x += Random.Range(RandomMiddleMin.x, RandomMiddleMax.x);
-            pos.y += Random.Range(RandomMiddleMin.y, RandomMiddleMax.y);
-
-            line.SetPosition(i, pos);
-
-        }
-
-        var end = finalPos;
-
-        end.x += Random.Range(RandomEndMin.x, RandomEndMax.x);
-        end.y += Random.Range(RandomEndMin.y, RandomEndMax.y);
-
-        line.SetPosition((int)NumberOfBends - 1, end);
-        shakeTimer = ShakeDuration;
-
-
+        CreateLightBolt();
         yield return new WaitForSeconds(duration);
         line.enabled = false;
+    
+        if (DirectionalLight != null)
+            DirectionalLight.enabled = false;
     }
 
-    void SpawnContinuousLightBolt()
+    void CreateLightBolt()
     {
         line.enabled = true;
 
-        line.SetPosition(0, myTransform.position);
+        var start = myTransform.position;
+
+        start.x += Random.Range(RandomStartMin.x, RandomStartMax.x);
+        start.y += Random.Range(RandomStartMin.y, RandomStartMax.y);
+        line.SetPosition(0, start);
+
+        Vector2 ends = Vector2.zero;
 
         for (var i = 1; i < (int)NumberOfBends; i++)
         {
@@ -103,15 +126,20 @@ public class LightBolt : MonoBehaviour
 
             line.SetPosition(i, pos);
 
+            if (i == (int)NumberOfBends - 1)
+                ends = pos;
         }
 
-        var end = finalPos;
+        var end = finalPos.localPosition;
 
-        end.x += Random.Range(RandomEndMin.x, RandomEndMax.x);
-        end.y += Random.Range(RandomEndMin.y, RandomEndMax.y);
+        ends.x += Random.Range(RandomEndMin.x, RandomEndMax.x);
+        ends.y += Random.Range(RandomEndMin.y, RandomEndMax.y);
 
-        line.SetPosition((int)NumberOfBends - 1, end);
+        line.SetPosition((int)NumberOfBends - 1, ends);
         shakeTimer = ShakeDuration;
+
+        if (DirectionalLight != null)
+            DirectionalLight.enabled = true;
     }
     
     void ShakeCamera()
@@ -137,9 +165,13 @@ public class LightBolt : MonoBehaviour
         if (Input.GetMouseButtonDown(1)) // right mouse = toggle
             StartCoroutine(SpawnSingleLightBolt(Random.Range(0.1f, 0.4f)));
         else if (Input.GetMouseButton(0)) // left mouse = hold down
-            SpawnContinuousLightBolt();
+            CreateLightBolt();
         else if (Input.GetMouseButtonUp(0))
+        {
             line.enabled = false;
+            if (DirectionalLight != null)
+                DirectionalLight.enabled = false;
+        }
 
         if (UseCameraShake)
             ShakeCamera();
